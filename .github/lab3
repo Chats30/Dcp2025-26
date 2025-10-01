@@ -1,0 +1,258 @@
+# Star Map Visualization
+# Name: Cillian Chatham
+# SN: C24368226
+
+import py5
+import pandas as pd
+import math
+
+# Global variables
+stars_df = None
+selected_star_1 = None
+selected_star_2 = None
+
+def load_data():
+    """Load star data from CSV"""
+    df = pd.read_csv('HabHYG15ly.csv', encoding='latin-1')
+    return df
+
+def print_stars():
+    """Print star information"""
+    global stars_df
+    
+    # Total number of stars
+    print("=" * 60)
+    print("STAR MAP DATA SUMMARY")
+    print("=" * 60)
+    print(f"\nTotal number of stars: {len(stars_df)}")
+    
+    # First 5 stars with key information
+    print("\nFirst 5 stars:")
+    print("-" * 60)
+    for idx, star in stars_df.head(5).iterrows():
+        print(f"\n{idx + 1}. {star['Display Name']}")
+        print(f"   Distance: {star['Distance']:.2f} parsecs")
+        print(f"   Coordinates: X={star['Xg']:.2f}, Y={star['Yg']:.2f}, Z={star['Zg']:.2f}")
+        print(f"   Magnitude: {star['AbsMag']:.2f}")
+        if star['Hab?'] == 1:
+            print(f"   ★ High probability habitable planet!")
+    
+    # Interesting statistics
+    print("\n" + "=" * 60)
+    print("INTERESTING STATISTICS")
+    print("=" * 60)
+    
+    # Habitable stars
+    habitable = stars_df[stars_df['Hab?'] == 1]
+    print(f"\nStars with habitable planets: {len(habitable)}")
+    
+    # Distance statistics
+    print(f"\nClosest star: {stars_df.loc[stars_df['Distance'].idxmin(), 'Display Name']} "
+          f"({stars_df['Distance'].min():.2f} parsecs)")
+    print(f"Farthest star: {stars_df.loc[stars_df['Distance'].idxmax(), 'Display Name']} "
+          f"({stars_df['Distance'].max():.2f} parsecs)")
+    print(f"Average distance: {stars_df['Distance'].mean():.2f} parsecs")
+    
+    # Magnitude statistics
+    print(f"\nBrightest star (lowest magnitude): {stars_df.loc[stars_df['AbsMag'].idxmin(), 'Display Name']} "
+          f"(Mag: {stars_df['AbsMag'].min():.2f})")
+    print(f"Dimmest star (highest magnitude): {stars_df.loc[stars_df['AbsMag'].idxmax(), 'Display Name']} "
+          f"(Mag: {stars_df['AbsMag'].max():.2f})")
+    
+    print("\n" + "=" * 60 + "\n")
+
+def parsecs_to_pixels_x(parsecs):
+    """Convert parsec X to pixel X"""
+    return py5.remap(parsecs, -5, 5, 50, 750)
+
+def parsecs_to_pixels_y(parsecs):
+    """Convert parsec Y to pixel Y"""
+    return py5.remap(parsecs, -5, 5, 50, 750)
+
+def draw_grid():
+    """Draw coordinate grid"""
+    py5.stroke(128, 0, 128)  # Purple
+    py5.stroke_weight(1)
+    py5.text_align(py5.CENTER, py5.CENTER)
+    py5.fill(128, 0, 128)
+    
+    # Draw vertical lines (X axis)
+    for i in range(-5, 6):
+        x = parsecs_to_pixels_x(i)
+        py5.line(x, 50, x, 750)
+        # Label at bottom
+        py5.text(str(i), x, 770)
+    
+    # Draw horizontal lines (Y axis)
+    for i in range(-5, 6):
+        y = parsecs_to_pixels_y(i)
+        py5.line(50, y, 750, y)
+        # Label at left
+        py5.text(str(i), 30, y)
+    
+    # Axis labels
+    py5.text_size(12)
+    py5.text("X (parsecs)", 400, 790)
+    py5.push_matrix()
+    py5.translate(10, 400)
+    py5.rotate(-py5.PI / 2)
+    py5.text("Y (parsecs)", 0, 0)
+    py5.pop_matrix()
+
+def draw_stars():
+    """Draw all stars"""
+    global stars_df
+    
+    for idx, star in stars_df.iterrows():
+        x = parsecs_to_pixels_x(star['Xg'])
+        y = parsecs_to_pixels_y(star['Yg'])
+        
+        # Draw yellow cross (10 pixels)
+        py5.stroke(255, 255, 0)  # Yellow
+        py5.stroke_weight(2)
+        py5.line(x - 5, y, x + 5, y)
+        py5.line(x, y - 5, x, y + 5)
+        
+        # Draw red circle based on magnitude
+        # Smaller magnitude = brighter/bigger star
+        diameter = py5.remap(star['AbsMag'], 15, 0, 5, 30)
+        diameter = max(5, min(30, diameter))  # Clamp between 5 and 30
+        
+        py5.no_fill()
+        py5.stroke(255, 0, 0)  
+        py5.stroke_weight(1)
+        py5.circle(x, y, diameter)
+        
+        # Draw star name
+        py5.fill(255)
+        py5.text_align(py5.LEFT, py5.CENTER)
+        py5.text_size(10)
+        py5.text(star['Display Name'], x + 8, y)
+        
+        # Highlight habitable stars
+        if star['Hab?'] == 1:
+            py5.fill(0, 255, 0)  
+            py5.text_size(12)
+            py5.text("★", x - 10, y - 10)
+
+def find_clicked_star(mouse_x, mouse_y):
+    """Find which star was clicked"""
+    global stars_df
+    
+    for idx, star in stars_df.iterrows():
+        x = parsecs_to_pixels_x(star['Xg'])
+        y = parsecs_to_pixels_y(star['Yg'])
+        
+        
+        diameter = py5.remap(star['AbsMag'], 15, 0, 5, 30)
+        diameter = max(5, min(30, diameter))
+        radius = diameter / 2
+        
+        distance = math.sqrt((mouse_x - x) ** 2 + (mouse_y - y) ** 2)
+        
+        if distance <= radius + 5:  
+            return idx
+    
+    return None
+
+def calculate_distance(star1_idx, star2_idx):
+    """Calculate 3D distance between stars"""
+    global stars_df
+    
+    star1 = stars_df.iloc[star1_idx]
+    star2 = stars_df.iloc[star2_idx]
+    
+    dx = star2['Xg'] - star1['Xg']
+    dy = star2['Yg'] - star1['Yg']
+    dz = star2['Zg'] - star1['Zg']
+    
+    distance = math.sqrt(dx**2 + dy**2 + dz**2)
+    
+    return distance, star1['Display Name'], star2['Display Name']
+
+def setup():
+    py5.size(800, 800)
+    global stars_df
+    stars_df = load_data()
+    print_stars()
+
+def draw():
+    py5.background(0)  
+    draw_grid()
+    draw_stars()
+    
+    global selected_star_1, selected_star_2
+    
+    # Draw interactive lines
+    if selected_star_1 is not None:
+        star1 = stars_df.iloc[selected_star_1]
+        x1 = parsecs_to_pixels_x(star1['Xg'])
+        y1 = parsecs_to_pixels_y(star1['Yg'])
+        
+        # Highlight first selected star
+        py5.fill(255, 255, 0, 100)  
+        py5.no_stroke()
+        py5.circle(x1, y1, 20)
+        
+        if selected_star_2 is None:
+            # Draw line from star to mouse
+            py5.stroke(255, 255, 0)  
+            py5.stroke_weight(2)
+            py5.line(x1, y1, py5.mouse_x, py5.mouse_y)
+        else:
+            # Draw line between two stars
+            star2 = stars_df.iloc[selected_star_2]
+            x2 = parsecs_to_pixels_x(star2['Xg'])
+            y2 = parsecs_to_pixels_y(star2['Yg'])
+            
+            # Highlight second selected star
+            py5.fill(255, 255, 0, 100)
+            py5.no_stroke()
+            py5.circle(x2, y2, 20)
+            
+            # Draw connecting line
+            py5.stroke(255, 255, 0)
+            py5.stroke_weight(3)
+            py5.line(x1, y1, x2, y2)
+            
+            # Display distance
+            distance, name1, name2 = calculate_distance(selected_star_1, selected_star_2)
+            
+            # Draw background box for text
+            py5.fill(0, 200)
+            py5.no_stroke()
+            py5.rect(50, 10, 700, 30)
+            
+            # Draw distance text
+            py5.fill(255, 255, 0)
+            py5.text_align(py5.CENTER, py5.CENTER)
+            py5.text_size(14)
+            distance_text = f"Distance from {name1} to {name2} is {distance:.2f} parsecs"
+            py5.text(distance_text, 400, 25)
+
+def mouse_pressed():
+    """Handle mouse clicks"""
+    global selected_star_1, selected_star_2
+    
+    clicked_star = find_clicked_star(py5.mouse_x, py5.mouse_y)
+    
+    if clicked_star is not None:
+        if selected_star_1 is None:
+            # First star selected
+            selected_star_1 = clicked_star
+            print(f"Selected: {stars_df.iloc[clicked_star]['Display Name']}")
+        elif selected_star_2 is None:
+            # Second star selected
+            if clicked_star != selected_star_1:
+                selected_star_2 = clicked_star
+                distance, name1, name2 = calculate_distance(selected_star_1, selected_star_2)
+                print(f"\nDistance from {name1} to {name2} is {distance:.2f} parsecs\n")
+            else:
+                print("Please select a different star!")
+        else:
+            
+            selected_star_1 = clicked_star
+            selected_star_2 = None
+            print(f"\nReset. Selected: {stars_df.iloc[clicked_star]['Display Name']}")
+
+py5.run_sketch()
